@@ -41,7 +41,8 @@ foreach ($folder in $lambdaFolders) {
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✓ Successfully installed dependencies for $($folder.Name)" -ForegroundColor Green
             $successCount++
-        } else {
+        }
+        else {
             Write-Host "✗ Failed to install dependencies for $($folder.Name)" -ForegroundColor Red
             $failCount++
         }
@@ -67,7 +68,8 @@ if ($failCount -gt 0) {
     Write-Host ""
     Write-Host "Some installations failed. Please check the errors above." -ForegroundColor Yellow
     exit 1
-} else {
+}
+else {
     Write-Host ""
     Write-Host "All dependencies installed successfully! ✓" -ForegroundColor Green
     exit 0
