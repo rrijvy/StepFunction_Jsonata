@@ -1,0 +1,17 @@
+{
+  "name": "processor-lambda",
+  "version": "1.0.0",
+  "description": "Business action processor with JSONata conditional logic support",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@types/aws-lambda": "^8.10.145"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.6.3"
+  }
+}

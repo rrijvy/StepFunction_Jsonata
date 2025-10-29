@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: SAM Template for Document Processing Workflow with JSONata
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - stage
+      - live
+  ServiceRole:
+    Type: String
+    Default: arn:aws:iam::123456789012:role/DocumentProcessingServiceRole
+  StateMachineRole:
+    Type: String
+    Default: arn:aws:iam::123456789012:role/DocumentProcessingStateMachineRole
+  PrimaryBucket:
+    Type: String
+    Default: document-processing-store
+  ManualReviewTopic:
+    Type: String
+    Default: arn:aws:sns:us-east-1:123456789012:manual-review
+
+Globals:
+  Function:
+    Timeout: 300
+    LoggingConfig:
+      LogFormat: JSON
+    Environment:
+      Variables:
+        AWS_REGION: us-east-1
+        ROLE_ARN: !Ref ServiceRole
+        ENVIRONMENT: !Ref Environment
+        PRIMARY_BUCKET: !Ref PrimaryBucket
+
+Resources:
+  DocumentProcessingStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${Environment}_DocumentProcessingStateMachine"
+      DefinitionUri: stepFunction.asl.json
+      Role: !Ref StateMachineRole
+      DefinitionSubstitutions:
+        DocumentClassifierArn: !GetAtt DocumentClassifierFunction.Arn
+        DataExtractorArn: !GetAtt DataExtractorFunction.Arn
+        BusinessActionArn: !GetAtt ProcessorFunction.Arn
+        ManualReviewTopicArn: !Ref ManualReviewTopic
+  DocumentClassifierFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: DocumentClassifierLambda/
+      Handler: dist/main.lambda_handler
+      Runtime: nodejs20.x
+      FunctionName: !Sub "${Environment}_DocumentClassifierLambda"
+      Description: "Document classification lambda with confidence scoring and JSONata support"
+      Architectures:
+        - x86_64
+      PackageType: Zip
+      MemorySize: 2048
+      Timeout: 300
+      Role: !Ref ServiceRole
+      Environment:
+        Variables:
+          NODE_ENV: !Ref Environment
+          CLASSIFICATION_MODEL_ENDPOINT: !Sub "arn:aws:sagemaker:us-east-1:${AWS::AccountId}:endpoint/document-classifier-endpoint"
+          MIN_CONFIDENCE_THRESHOLD: "0.7"
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints:
+          - src/main.ts
+
+  DataExtractorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: DataExtractorLambda/
+      Handler: dist/main.lambda_handler
+      Runtime: nodejs20.x
+      FunctionName: !Sub "${Environment}_DataExtractorLambda"
+      Description: "Data extraction lambda with JSONata query processing support"
+      Architectures:
+        - x86_64
+      PackageType: Zip
+      MemorySize: 3008
+      Timeout: 600
+      Role: !Ref ServiceRole
+      Environment:
+        Variables:
+          NODE_ENV: !Ref Environment
+          TEXTRACT_ROLE_ARN: !Sub "arn:aws:iam::${AWS::AccountId}:role/TextractServiceRole"
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints:
+          - src/main.ts
+
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ProcessorLambda/
+      Handler: dist/main.lambda_handler
+      Runtime: nodejs20.x
+      FunctionName: !Sub "${Environment}_ProcessorLambda"
+      Description: "Business action processor with JSONata conditional logic support"
+      Architectures:
+        - x86_64
+      PackageType: Zip
+      MemorySize: 1024
+      Timeout: 300
+      Role: !Ref ServiceRole
+      Environment:
+        Variables:
+          NODE_ENV: !Ref Environment
+          PAYMENT_PROCESSOR_ENDPOINT: !Sub "https://api.payments.${Environment}.example.com/process"
+          ORDER_MANAGEMENT_ENDPOINT: !Sub "https://api.orders.${Environment}.example.com/create"
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        EntryPoints:
+          - src/main.ts
+
+  # SNS Topic for Manual Review
+  ManualReviewTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${Environment}-DocumentProcessing-ManualReview"
+      DisplayName: "Document Processing Manual Review"
+
+  # Application Resource Group for monitoring
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name: !Sub "ApplicationInsights-SAM-${AWS::StackName}"
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+
+Outputs:
+  DocumentProcessingStateMachineArn:
+    Description: "Document Processing State Machine ARN"
+    Value: !GetAtt DocumentProcessingStateMachine.Arn
+    Export:
+      Name: !Sub "${Environment}-DocumentProcessingStateMachine-Arn"
+
+  ManualReviewTopicArn:
+    Description: "SNS Topic for manual review notifications"
+    Value: !Ref ManualReviewTopic
+    Export:
+      Name: !Sub "${Environment}-ManualReviewTopic-Arn"
+
+  DocumentClassifierFunctionArn:
+    Description: "Document Classifier Lambda Function ARN"
+    Value: !GetAtt DocumentClassifierFunction.Arn
+
+  DataExtractorFunctionArn:
+    Description: "Data Extractor Lambda Function ARN"
+    Value: !GetAtt DataExtractorFunction.Arn
+
+  ProcessorFunctionArn:
+    Description: "Processor Lambda Function ARN"
+    Value: !GetAtt ProcessorFunction.Arn

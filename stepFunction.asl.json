@@ -1,0 +1,95 @@
+{
+    "Comment": "Document Processing Workflow with JSONata",
+    "StartAt": "ClassifyDocument",
+    "States": {
+        "ClassifyDocument": {
+            "Type": "Task",
+            "Resource": "${DocumentClassifierArn}",
+            "ResultPath": "$.classificationResult",
+            "Next": "CheckClassification",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.TaskFailed"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "ClassificationFailed"
+                }
+            ],
+            "Comment": "Invokes DocumentClassifier Lambda to classify the document"
+        },
+        "CheckClassification": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.classificationResult.documentType",
+                    "IsNull": true,
+                    "Next": "ClassificationFailed"
+                },
+                {
+                    "Variable": "$.classificationResult.confidence",
+                    "NumericLessThan": 0.7,
+                    "Next": "ManualReview"
+                }
+            ],
+            "Default": "TransformForExtraction"
+        },
+        "TransformForExtraction": {
+            "Type": "Pass",
+            "Parameters": {
+                "document.$": "$.document",
+                "documentType.$": "$.classificationResult.documentType",
+                "confidence.$": "$.classificationResult.confidence",
+                "QueryLanguage": "JSONata",
+                "Query": "$merge([$.document, {'metadata': {'classified': true, 'type': $.classificationResult.documentType}}])"
+            },
+            "ResultPath": "$.extractionInput",
+            "Next": "ExtractDocumentData"
+        },
+        "ExtractDocumentData": {
+            "Type": "Task",
+            "Resource": "${DataExtractorArn}",
+            "InputPath": "$.extractionInput",
+            "ResultPath": "$.extractionResult",
+            "Next": "ProcessExtractedData",
+            "Comment": "Invokes DataExtractor Lambda to extract data from the document"
+        },
+        "ProcessExtractedData": {
+            "Type": "Task",
+            "Resource": "${BusinessActionArn}",
+            "Parameters": {
+                "actionType.$": "$.extractionInput.documentType = 'INVOICE' ? 'processPayment' : 'createOrder'",
+                "extractedData.$": "$.extractionResult.extractedData",
+                "documentId.$": "$.document.id",
+                "QueryLanguage": "JSONata",
+                "Query": "{'action': documentType = 'INVOICE' ? 'processPayment' : 'createOrder', 'payload': data}"
+            },
+            "End": true,
+            "Comment": "Invokes Processor Lambda to perform business action based on document type"
+        },
+        "ManualReview": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sns:publish",
+            "Parameters": {
+                "TopicArn": "${ManualReviewTopicArn}",
+                "Message.$": "$.document.key"
+            },
+            "End": true
+        },
+        "ClassificationFailed": {
+            "Type": "Fail",
+            "Error": "ClassificationError",
+            "Cause": "Unable to classify document"
+        }
+    }
+}
