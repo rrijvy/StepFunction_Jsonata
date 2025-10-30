@@ -63,7 +63,7 @@
             "Next": "ExtractDocumentData",
             "QueryLanguage": "JSONata",
             "Arguments": {
-                "TableName": "{% 'PrimaryTable' %}",
+                "TableName": "{% '${PrimaryTableName}' %}",
                 "Key": {
                     "p1stonId": {
                         "S": "{% 'CONFIG:LIST' %}"
@@ -75,12 +75,7 @@
             },
             "Assign": {
                 "config": "{% $merge($keys($states.result.Item).{$: $lookup($states.result.Item, $).S}) %}"
-            },
-            "Catch": [
-                {
-                    "ErrorEquals": []
-                }
-            ]
+            }            
         },
         "ExtractDocumentData": {
             "Type": "Task",

@@ -19,6 +19,10 @@ Parameters:
   PrimaryBucket:
     Type: String
     Default: document-processing-store
+  PrimaryTableName:
+    Type: String
+    Default: PrimaryTable
+    Description: Name of the DynamoDB table for configuration storage
   ManualReviewTopic:
     Type: String
     Default: arn:aws:sns:us-east-1:123456789012:manual-review
@@ -47,6 +51,7 @@ Resources:
         DataExtractorArn: !GetAtt DataExtractorFunction.Arn
         BusinessActionArn: !GetAtt ProcessorFunction.Arn
         ManualReviewTopicArn: !Ref ManualReviewTopic
+        PrimaryTableName: !Ref PrimaryTableName
   DocumentClassifierFunction:
     Type: AWS::Serverless::Function
     Properties:

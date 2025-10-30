@@ -39,16 +39,16 @@ foreach ($folder in $lambdaFolders) {
         npm install
         
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Successfully installed dependencies for $($folder.Name)" -ForegroundColor Green
+            Write-Host "[SUCCESS] Successfully installed dependencies for $($folder.Name)" -ForegroundColor Green
             $successCount++
         }
         else {
-            Write-Host "✗ Failed to install dependencies for $($folder.Name)" -ForegroundColor Red
+            Write-Host "[FAILED] Failed to install dependencies for $($folder.Name)" -ForegroundColor Red
             $failCount++
         }
     }
     catch {
-        Write-Host "✗ Error installing dependencies for $($folder.Name): $_" -ForegroundColor Red
+        Write-Host "[ERROR] Error installing dependencies for $($folder.Name): $_" -ForegroundColor Red
         $failCount++
     }
     finally {
@@ -71,6 +71,6 @@ if ($failCount -gt 0) {
 }
 else {
     Write-Host ""
-    Write-Host "All dependencies installed successfully! ✓" -ForegroundColor Green
+    Write-Host "All dependencies installed successfully!" -ForegroundColor Green
     exit 0
 }
