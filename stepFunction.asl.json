@@ -28,7 +28,7 @@
             "QueryLanguage": "JSONata",
             "Arguments": {
                 "id": "{% $states.input.documentId %}",
-                "key": "{% $states.input.s3Key %}"
+                "s3Key": "{% $states.input.s3Key %}"
             },
             "Output": {
                 "documentType": "{% $states.result.classificationResult.documentType %}",
@@ -37,12 +37,14 @@
             },
             "Assign": {
                 "documentType": "{% $states.result.classificationResult.documentType %}",
-                "confidence": "{% $states.result.classificationResult.confidence %}"
+                "confidence": "{% $states.result.classificationResult.confidence %}",
+                "s3Key": "{% $states.input.s3Key %}",
+                "needManualReview": "{% $states.result.needManualReview %}"
             }
         },
         "CheckClassification": {
             "Type": "Choice",
-            "Default": "TransformForExtraction",
+            "Default": "GetConfig",
             "Choices": [
                 {
                     "Condition": "{% ($type($documentType) = \"null\" or ($confidence) < (0.7)) %}",
@@ -55,40 +57,84 @@
             ],
             "QueryLanguage": "JSONata"
         },
-        "TransformForExtraction": {
-            "Type": "Pass",
+        "GetConfig": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::dynamodb:getItem",
             "Next": "ExtractDocumentData",
-            "QueryLanguage": "JSONata"
+            "QueryLanguage": "JSONata",
+            "Arguments": {
+                "TableName": "{% 'PrimaryTable' %}",
+                "Key": {
+                    "p1stonId": {
+                        "S": "{% 'CONFIG:LIST' %}"
+                    },
+                    "p1stonType": {
+                        "S": "{% 'SETTINGS:' & $uppercase($documentType) %}"
+                    }
+                }
+            },
+            "Assign": {
+                "config": "{% $merge($keys($states.result.Item).{$: $lookup($states.result.Item, $).S}) %}"
+            },
+            "Catch": [
+                {
+                    "ErrorEquals": []
+                }
+            ]
         },
         "ExtractDocumentData": {
             "Type": "Task",
             "Resource": "${DataExtractorArn}",
-            "InputPath": "$.extractionInput",
-            "ResultPath": "$.extractionResult",
             "Next": "ProcessExtractedData",
-            "Comment": "Invokes DataExtractor Lambda to extract data from the document"
+            "Comment": "Invokes DataExtractor Lambda to extract data from the document",
+            "QueryLanguage": "JSONata",
+            "Arguments": {
+                "config": "{% $config %}",
+                "documentType": "{% $documentType %}",
+                "s3Key": "{% $s3Key %}"
+            },
+            "Output": {
+                "extractedData": "{% $states.result.extractedData %}"
+            },
+            "Assign": {
+                "extractedData": "{% $states.result.extractedData %}"
+            }
         },
         "ProcessExtractedData": {
             "Type": "Task",
             "Resource": "${BusinessActionArn}",
-            "Parameters": {
-                "actionType.$": "$.extractionInput.documentType = 'INVOICE' ? 'processPayment' : 'createOrder'",
-                "extractedData.$": "$.extractionResult.extractedData",
-                "documentId.$": "$.document.id",
-                "QueryLanguage": "JSONata",
-                "Query": "{'action': documentType = 'INVOICE' ? 'processPayment' : 'createOrder', 'payload': data}"
-            },
             "End": true,
-            "Comment": "Invokes Processor Lambda to perform business action based on document type"
+            "Comment": "Invokes Processor Lambda to perform business action based on document type",
+            "QueryLanguage": "JSONata",
+            "Arguments": {
+                "extractedData": "{% $extractedData %}"
+            },
+            "Output": {
+                "status": "{%$states.result.status  %}"
+            },
+            "Assign": {
+                "status": "{%$states.result.status  %}"
+            }
         },
         "ManualReview": {
             "Type": "Task",
             "Resource": "arn:aws:states:::sns:publish",
-            "Parameters": {
-                "TopicArn": "${ManualReviewTopicArn}",
-                "Message.$": "$.document.key"
+            "End": true,
+            "QueryLanguage": "JSONata",
+            "Arguments": {
+                "TopicArn": "arn:aws:sns::123456789012:topic:mytopic",
+                "Message": {
+                    "documentType": "{% $documentType %}",
+                    "confidence": "{% $confidence %}",
+                    "s3Key": "{% $s3Key %}"
+                }
             },
-            "End": true
+            "Output": {
+                "snsPublished": "{% $states.result.status %}"
+            },
+            "Assign": {
+                "snsPublished": "{% $states.result.status %}"
+            }
         },
         "ClassificationFailed": {
             "Type": "Fail",
